@@ -34,12 +34,12 @@ if __name__ == '__main__':
     out_index = 2
 
     model = Sequential()
-    model.add(LSTM(25, input_shape=(length, n_features)))
+    model.add(LSTM(50, input_shape=(length, n_features)))
     model.add(Dense(n_features, activation='softmax'))
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     model.summary()
 
-for i in range(10000):
-    X, y = generate_example(length, n_features, out_index)
-    yhat = model.fit(X, y, verbose=2)
+# for i in range(10000):
+#     X, y = generate_example(length, n_features, out_index)
+#     yhat = model.fit(X, y, verbose=2)
 
