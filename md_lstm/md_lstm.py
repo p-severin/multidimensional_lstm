@@ -223,27 +223,3 @@ def multi_dimensional_rnn_while_loop(rnn_size, input_data, sh, dims=None, scope_
 
         # Return the output and the inner states
         return y, states
-
-
-def horizontal_standard_lstm(input_data, rnn_size):
-    # input is (b, h, w, c)
-    b, h, w, c = input_data.get_shape().as_list()
-    # transpose = swap h and w.
-    new_input_data = tf.reshape(input_data, (b * h, w, c))  # horizontal.
-    rnn_out, _ = dynamic_rnn(tf.contrib.rnn.LSTMCell(rnn_size),
-                             inputs=new_input_data,
-                             dtype=tf.float32)
-    rnn_out = tf.reshape(rnn_out, (b, h, w, rnn_size))
-    return rnn_out
-
-
-def snake_standard_lstm(input_data, rnn_size):
-    # input is (b, h, w, c)
-    b, h, w, c = input_data.get_shape().as_list()
-    # transpose = swap h and w.
-    new_input_data = tf.reshape(input_data, (b, w * h, c))  # snake.
-    rnn_out, _ = dynamic_rnn(tf.contrib.rnn.LSTMCell(rnn_size),
-                             inputs=new_input_data,
-                             dtype=tf.float32)
-    rnn_out = tf.reshape(rnn_out, (b, h, w, rnn_size))
-    return rnn_out

@@ -1,7 +1,10 @@
 import os
 from functools import partial
+
+from skimage.transform import resize
+from sklearn.externals._pilutil import imresize
 from sklearn.feature_extraction import image
-from numpy.lib.stride_tricks import as_strided
+from skimage.util import view_as_windows
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -74,37 +77,80 @@ if __name__ == '__main__':
         rgb_image = pair_of_images[0]
         segmentation = pair_of_images[1]
 
+        image_shape = (270, 270)
+        rgb_image = imresize(rgb_image, image_shape, interp='bilinear')
+        segmentation = imresize(segmentation, size=image_shape, interp='nearest')
+        print(np.unique(segmentation))
+
+
+
+        patch_shape = (15, 15, 3)
+        segmentation_shape = (15, 15)
+        step = 15
+
+        patches_rgb = view_as_windows(rgb_image, patch_shape, step=step)
+        patches_rgb = np.reshape(patches_rgb, (-1, *patch_shape))
+
+        patches_segmentation = view_as_windows(segmentation, segmentation_shape, step=step)
+        patches_segmentation = np.reshape(patches_segmentation, (-1, *segmentation_shape))
+
+        print(patches_rgb.shape)
+        print(patches_segmentation.shape)
+
+        plt.subplot(211)
+        plt.imshow(rgb_image)
+        plt.subplot(212)
+        plt.imshow(segmentation)
+        plt.show()
+
+        original_shape = rgb_image.shape
+        print('original shape: {}'.format(original_shape))
+
+        # patches_rgb = view_as_windows(rgb_image, patch_shape, step=3)
+        # patches_rgb = np.reshape(patches_rgb, (-1, *patch_shape))
+        # print(patches_rgb.shape)
+        for patch in patches_rgb:
+            flipped = np.fliplr(patch)
+            flipped_ver = np.flipud(patch)
+            plt.subplot(311)
+            plt.imshow(patch)
+            plt.subplot(312)
+            plt.imshow(flipped)
+            plt.subplot(313)
+            plt.imshow(flipped_ver)
+            plt.show()
+
 
 
         # blocks_of_image = np.reshape(image, (-1, 3, 3, 3))
         # print(blocks_of_image.shape)
 
-        height, width, channels = rgb_image.shape
-        stride = 3
-
-        print(rgb_image.shape)
-
-        floored_height = (height) // 3 * 3
-        floored_width = (width) // 3 * 3
-
-        print(type(floored_height))
-
-        patches = []
-        for i in range(0, floored_height, stride):
-            for j in range(0, floored_width, stride):
-                patches.append(rgb_image[i: i+stride, j: j+stride, :])
-
-        patches = np.array(patches)
-        print(patches.shape)
-
-        original = np.zeros((floored_height, floored_width, channels), np.uint8)
-        print(original.shape)
-
-        for i in range(0, floored_height, stride):
-            for j in range(0, floored_width, stride):
-                original[i: i+stride, j: j+stride, :] = patches[int(i / 3) * int(floored_width / 3) + int(j / 3)]
-        plt.imshow(original)
-        plt.show()
-
-        plt.imshow(rgb_image)
-        plt.show()
+        # height, width, channels = rgb_image.shape
+        # stride = 3
+        #
+        # print(rgb_image.shape)
+        #
+        # floored_height = (height) // 3 * 3
+        # floored_width = (width) // 3 * 3
+        #
+        # print(type(floored_height))
+        #
+        # patches = []
+        # for i in range(0, floored_height, stride):
+        #     for j in range(0, floored_width, stride):
+        #         patches.append(rgb_image[i: i+stride, j: j+stride, :])
+        #
+        # patches = np.array(patches)
+        # print(patches.shape)
+        #
+        # original = np.zeros((floored_height, floored_width, channels), np.uint8)
+        # print(original.shape)
+        #
+        # for i in range(0, floored_height, stride):
+        #     for j in range(0, floored_width, stride):
+        #         original[i: i+stride, j: j+stride, :] = patches[int(i / 3) * int(floored_width / 3) + int(j / 3)]
+        # plt.imshow(original)
+        # plt.show()
+        #
+        # plt.imshow(rgb_image)
+        # plt.show()
