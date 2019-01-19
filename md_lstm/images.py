@@ -1,7 +1,7 @@
 import os
 from functools import partial
 
-from skimage.transform import resize
+from skimage.transform import resize, rescale
 from sklearn.externals._pilutil import imresize
 from sklearn.feature_extraction import image
 from skimage.util import view_as_windows
@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from PIL import Image
+from sklearn.preprocessing import OneHotEncoder, LabelEncoder, MinMaxScaler
+from tensorflow.python.keras.utils import to_categorical
 
 directory_voc_dataset = '/Users/patrykseweryn/PycharmProjects/datasets/voc_dataset/VOCtrainval_11-May-2012/VOCdevkit/VOC2012'
 
@@ -19,7 +21,7 @@ class Dataset:
                       segmentation='.png',
                       annotations='.txt')
 
-    def __init__(self, directory_images, subsets):
+    def __init__(self, directory_images, subsets, image_shape=(270, 270)):
         self.main_directory = partial(os.path.join, directory_images)
         self.directories = dict(image=self.main_directory('JPEGImages'),
                                 segmentation=self.main_directory(
@@ -29,6 +31,8 @@ class Dataset:
         self.subsets = subsets
         self.rgb_images = dict(train=[],
                                val=[])
+        self.image_shape = image_shape
+        self.segmentation_shape = (self.image_shape[0] //3, self.image_shape[1] // 3)
         self.data = dict()
 
         for subset in self.subsets:
@@ -45,15 +49,22 @@ class Dataset:
         return csv_data.values.reshape((-1))
 
     def image_generator(self, subset):
-        for file in self.data[subset]:
+        images = []
+        y = []
+
+        for file in self.data[subset][:32]:
             image = self.open_image(file, 'image')
             segmentation = self.open_image(file, 'segmentation')
-            if 15 in np.unique(segmentation):
+            image = imresize(image, self.image_shape, interp='bilinear')
+            segmentation = imresize(segmentation, size=self.segmentation_shape,
+                                    interp='nearest')
                 # self.plot_image_and_its_segmentation(image, segmentation)
-                print(np.unique(segmentation))
-                yield image, segmentation
-            else:
-                continue
+                # print(np.unique(segmentation))
+            images.append(image)
+            y.append(segmentation)
+        print(len(images))
+        print(len(y))
+        return images, y
 
     def open_image(self, file_name, image_type):
         image_path = os.path.join(self.directories[image_type],
@@ -70,55 +81,93 @@ class Dataset:
         plt.show()
 
 
-if __name__ == '__main__':
+def extract_patches(pair_of_images):
+    rgb_image = pair_of_images[0]
+    segmentation = pair_of_images[1]
+
+    print(np.unique(segmentation))
+    patch_shape = (3, 3, 3)
+    segmentation_shape = (1, 1)
+    step = 3
+    segmentation_step = 1
+    patches_rgb = view_as_windows(rgb_image, patch_shape, step=step)
+    patches_rgb = np.reshape(patches_rgb, (-1, *patch_shape))
+    patches_segmentation = view_as_windows(segmentation, segmentation_shape,
+                                           step=segmentation_step)
+    patches_segmentation = np.reshape(patches_segmentation,
+                                      (-1, *segmentation_shape))
+    return patches_rgb, patches_segmentation
+
+def __one_hot_encode_y(y_dataset):
+    one_hot_encoded = to_categorical(y_dataset)
+    y_dataset = one_hot_encoded
+    return y_dataset
+
+def create_dataset():
     dataset = Dataset(directory_voc_dataset, subsets=['train', 'val'])
-    image_generator = dataset.image_generator('train')
-    for pair_of_images in image_generator:
-        rgb_image = pair_of_images[0]
-        segmentation = pair_of_images[1]
+    X, y = dataset.image_generator('train')
 
-        image_shape = (270, 270)
-        rgb_image = imresize(rgb_image, image_shape, interp='bilinear')
-        segmentation = imresize(segmentation, size=image_shape, interp='nearest')
-        print(np.unique(segmentation))
+    # total_X = []
+    # total_y = []
+
+    # for pair_of_images in zip(X, y):
+    #     patches_rgb, patches_segmentation = extract_patches(pair_of_images)
+    #     rgb_image = pair_of_images[0]
+    #     segmentation = pair_of_images[1]
+    #     print(len(total_X))
+    #     print(len(total_y))
+    #     total_X.extend(patches_rgb)
+    #     total_y.extend(patches_segmentation)
 
 
 
-        patch_shape = (15, 15, 3)
-        segmentation_shape = (15, 15)
-        step = 15
 
-        patches_rgb = view_as_windows(rgb_image, patch_shape, step=step)
-        patches_rgb = np.reshape(patches_rgb, (-1, *patch_shape))
 
-        patches_segmentation = view_as_windows(segmentation, segmentation_shape, step=step)
-        patches_segmentation = np.reshape(patches_segmentation, (-1, *segmentation_shape))
+        # print(patches_rgb.shape)
+        # print(patches_segmentation.shape)
 
-        print(patches_rgb.shape)
-        print(patches_segmentation.shape)
+        # plt.subplot(211)
+        # plt.imshow(rgb_image)
+        # plt.subplot(212)
+        # plt.imshow(segmentation)
+        # plt.show()
 
-        plt.subplot(211)
-        plt.imshow(rgb_image)
-        plt.subplot(212)
-        plt.imshow(segmentation)
-        plt.show()
+        # original_shape = rgb_image.shape
+        # print('original shape: {}'.format(original_shape))
+    # y = np.reshape(total_y, (-1, 1))
+    # y = __one_hot_encode_y(y)
+    # print(y.shape)
 
-        original_shape = rgb_image.shape
-        print('original shape: {}'.format(original_shape))
+    X = np.array(X, dtype=np.float32)
+    # print(np.min(X), np.max(X))
+    # x_min = np.min(X)
+    # x_max = np.max(X)
+    # X = (X - x_min) / (x_max - x_min)
+    # print(np.min(X), np.max(X))
+
+    y = __one_hot_encode_y(y)
+    y = np.array(y, dtype=np.int32)
+    # y = np.expand_dims(y, axis=3)
+    # print(X.shape)
+    return X, y
+
+if __name__ == '__main__':
+    create_dataset()
 
         # patches_rgb = view_as_windows(rgb_image, patch_shape, step=3)
         # patches_rgb = np.reshape(patches_rgb, (-1, *patch_shape))
         # print(patches_rgb.shape)
-        for patch in patches_rgb:
-            flipped = np.fliplr(patch)
-            flipped_ver = np.flipud(patch)
-            plt.subplot(311)
-            plt.imshow(patch)
-            plt.subplot(312)
-            plt.imshow(flipped)
-            plt.subplot(313)
-            plt.imshow(flipped_ver)
-            plt.show()
+        # for patch in patches_rgb:
+        #     flipped = np.fliplr(patch)
+        #     flipped_ver = np.flipud(patch)
+        #     plt.subplot(311)
+        #     plt.imshow(patch)
+        #     plt.subplot(312)
+        #     plt.imshow(flipped)
+        #     plt.subplot(313)
+        #     plt.imshow(flipped_ver)
+        #     plt.show()
+
 
 
 

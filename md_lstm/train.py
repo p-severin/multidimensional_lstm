@@ -6,7 +6,8 @@ import tensorflow as tf
 from tensorflow.contrib import slim
 import numpy as np
 
-from md_lstm.md_lstm import multi_dimensional_rnn_while_loop
+from md_lstm.images import create_dataset
+from md_lstm.md_lstm_implementation import multi_dimensional_rnn_while_loop
 
 logger = logging.getLogger(__name__)
 
@@ -47,26 +48,31 @@ def get_arguments(parser: argparse.ArgumentParser):
     return args
 
 
-def train(enable_plotting):
-    learning_rate = 10e-6
-    batch_size = 16
-    h = 3
-    w = 3
+def train():
+    learning_rate = 10e-4
+    batch_size = 1
+    h = 270
+    w = 270
     channels = 3
     hidden_size = 16
+    how_many_classes = 256
+    eps = 0
+
+    data_X, data_y = create_dataset()
+    print(data_y.shape)
 
     x = tf.placeholder(tf.float32, [batch_size, h, w, channels])
-    y = tf.placeholder(tf.float32, [batch_size, h, w, channels])
+    y = tf.placeholder(tf.int32, [batch_size, h //3, w //3, how_many_classes])
 
     logger.info('Using Multi Dimensional LSTM.')
     rnn_out, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
-                                                      input_data=x, sh=[1, 1])
+                                                      input_data=x, sh=[3, 3])
 
     model_out = slim.fully_connected(inputs=rnn_out,
-                                     num_outputs=1,
-                                     activation_fn=tf.nn.sigmoid)
+                                     num_outputs=how_many_classes,
+                                     activation_fn=tf.nn.softmax)
 
-    loss = tf.reduce_mean(tf.square(y - model_out))
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=model_out))
     grad_update = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
     sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))
@@ -77,15 +83,24 @@ def train(enable_plotting):
     #                  'overall_loss_{}'.format(model_type),
     #                  'time_{}'.format(model_type),
     #                  'relevant_loss_{}'.format(model_type)])
-    steps = 1000
-    for i in range(steps):
-        batch = next_batch(batch_size, h, w)
+    for i in range(data_X.shape[0] // batch_size):
+
         grad_step_start_time = time()
-        batch_x = np.expand_dims(batch[0], axis=3)
-        batch_y = np.expand_dims(batch[1], axis=3)
+        batch_x = data_X[i: i+batch_size]
+        batch_x += eps
+        batch_y = data_y[i: i+batch_size]
 
         model_preds, tot_loss_value, _ = sess.run(
             [model_out, loss, grad_update], feed_dict={x: batch_x, y: batch_y})
+
+        # print('model preds: {}'.format(model_preds.shape))
+        print('total_loss_value: {}'.format(tot_loss_value))
+
+        import matplotlib.pyplot as plt
+        output_image = model_preds[0, :, :, 0]
+        print(np.min(output_image), np.max(output_image))
+        plt.imshow(output_image, vmin=0, vmax=1)
+        plt.show()
 
         """
         ____________
@@ -99,30 +114,30 @@ def train(enable_plotting):
         """
 
         # extract the predictions for the second x
-        relevant_pred_index = get_relevant_prediction_index(batch_y)
-        true_rel = np.array([batch_y[i, x, y, 0] for (i, (y, x)) in
-                             enumerate(relevant_pred_index)])
-        pred_rel = np.array([model_preds[i, x, y, 0] for (i, (y, x)) in
-                             enumerate(relevant_pred_index)])
-        relevant_loss = np.mean(np.square(true_rel - pred_rel))
+        # relevant_pred_index = get_relevant_prediction_index(batch_y)
+        # true_rel = np.array([batch_y[i, x, y, 0] for (i, (y, x)) in
+        #                      enumerate(relevant_pred_index)])
+        # pred_rel = np.array([model_preds[i, x, y, 0] for (i, (y, x)) in
+        #                      enumerate(relevant_pred_index)])
+        # relevant_loss = np.mean(np.square(true_rel - pred_rel))
+        #
+        # values = [str(i).zfill(4), tot_loss_value,
+        #           time() - grad_step_start_time, relevant_loss]
+        # format_str = 'steps = {0} | overall loss = {1:.3f} | time {2:.3f} | relevant loss = {3:.3f}'
+        # logger.info(format_str.format(*values))
+        # fp.write(values)
 
-        values = [str(i).zfill(4), tot_loss_value,
-                  time() - grad_step_start_time, relevant_loss]
-        format_str = 'steps = {0} | overall loss = {1:.3f} | time {2:.3f} | relevant loss = {3:.3f}'
-        logger.info(format_str.format(*values))
-        fp.write(values)
-
-        display_matplotlib_every = 500
-        if enable_plotting and i % display_matplotlib_every == 0 and i != 0:
-            visualise_mat(
-                sess.run(model_out, feed_dict={x: batch_x})[0].squeeze())
-            visualise_mat(batch_y[0].squeeze())
+        # display_matplotlib_every = 500
+        # if enable_plotting and i % display_matplotlib_every == 0 and i != 0:
+        #     visualise_mat(
+        #         sess.run(model_out, feed_dict={x: batch_x})[0].squeeze())
+        #     visualise_mat(batch_y[0].squeeze())
 
 
 def main():
-    args = get_script_arguments()
+    # args = get_script_arguments()
     logging.basicConfig(format='%(asctime)12s - %(levelname)s - %(message)s', level=logging.INFO)
-    train(args.model_type, args.enable_plotting)
+    train()
 
 if __name__ == '__main__':
     main()
