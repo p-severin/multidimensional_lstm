@@ -30,7 +30,7 @@ n_timesteps = 10
 
 model = Sequential()
 model.add(Bidirectional(LSTM(50, return_sequences=True), input_shape=(n_timesteps, 1)))
-model.add(TimeDistributed(Dense(1, activation='sigmoid')))
+model.add(TimeDistributed(Dense(5, activation='sigmoid')))
 model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['acc'])
 model.summary()
 

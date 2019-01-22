@@ -24,6 +24,7 @@ def get_script_arguments():
     logger.info('Script inputs: {}.'.format(args))
     return args
 
+
 class ModelType(Enum):
     MD_LSTM = 'MD_LSTM'
 
@@ -50,29 +51,77 @@ def get_arguments(parser: argparse.ArgumentParser):
 
 def train():
     learning_rate = 10e-4
-    batch_size = 1
+    batch_size = 2
     h = 270
     w = 270
     channels = 3
     hidden_size = 16
-    how_many_classes = 256
-    eps = 0
+    how_many_classes = 21
+    eps = 10e-4
 
     data_X, data_y = create_dataset()
+    print(data_X.shape)
     print(data_y.shape)
 
     x = tf.placeholder(tf.float32, [batch_size, h, w, channels])
-    y = tf.placeholder(tf.int32, [batch_size, h //3, w //3, how_many_classes])
+    x_v = tf.placeholder(tf.float32, [batch_size, h, w, channels])
+    x_h = tf.placeholder(tf.float32, [batch_size, h, w, channels])
+    x_vh = tf.placeholder(tf.float32, [batch_size, h, w, channels])
+
+    y = tf.placeholder(tf.int32, [batch_size, h // 3, w // 3, how_many_classes])
 
     logger.info('Using Multi Dimensional LSTM.')
+
     rnn_out, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
-                                                      input_data=x, sh=[3, 3])
+                                                  input_data=x, sh=[3, 3],
+                                                  scope_n='layer_1')
+    rnn_out_v, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+                                                    input_data=x_v, sh=[3, 3],
+                                                    scope_n='layer_2')
+    rnn_out_h, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+                                                    input_data=x_h, sh=[3, 3],
+                                                    scope_n='layer_3')
+    rnn_out_vh, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+                                                     input_data=x_vh, sh=[3, 3],
+                                                     scope_n='layer_4')
 
-    model_out = slim.fully_connected(inputs=rnn_out,
-                                     num_outputs=how_many_classes,
-                                     activation_fn=tf.nn.softmax)
+    model_out = slim.fully_connected(
+        inputs=tf.concat([rnn_out, rnn_out_v, rnn_out_h, rnn_out_vh], axis=3),
+        num_outputs=how_many_classes,
+        activation_fn=tf.nn.tanh)
 
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=model_out))
+    model_out_v = tf.image.flip_left_right(model_out)
+    model_out_h = tf.image.flip_up_down(model_out)
+    model_out_vh = tf.image.flip_up_down(model_out_v)
+
+    rnn_out_2, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+                                                    input_data=model_out,
+                                                    sh=[1, 1],
+                                                    scope_n='layer_2_1')
+
+    rnn_out_2_v, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+                                                      input_data=model_out_v,
+                                                      sh=[1, 1],
+                                                      scope_n='layer_2_2')
+
+    rnn_out_2_h, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+                                                      input_data=model_out_h,
+                                                      sh=[1, 1],
+                                                      scope_n='layer_2_3')
+
+    rnn_out_2_vh, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+                                                       input_data=model_out_vh,
+                                                       sh=[1, 1],
+                                                       scope_n='layer_2_4')
+
+    model_output = slim.fully_connected(
+        inputs=tf.concat([rnn_out_2, rnn_out_2_v, rnn_out_2_h, rnn_out_2_vh],
+                         axis=3),
+        num_outputs=how_many_classes,
+        activation_fn=tf.nn.softmax)
+
+    loss = tf.reduce_mean(
+        tf.losses.softmax_cross_entropy(onehot_labels=y, logits=model_output))
     grad_update = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
     sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))
@@ -84,23 +133,27 @@ def train():
     #                  'time_{}'.format(model_type),
     #                  'relevant_loss_{}'.format(model_type)])
     for i in range(data_X.shape[0] // batch_size):
-
         grad_step_start_time = time()
-        batch_x = data_X[i: i+batch_size]
+        batch_x = data_X[i: i + batch_size]
         batch_x += eps
-        batch_y = data_y[i: i+batch_size]
+        print(batch_x.shape)
+        batch_y = data_y[i: i + batch_size]
 
         model_preds, tot_loss_value, _ = sess.run(
-            [model_out, loss, grad_update], feed_dict={x: batch_x, y: batch_y})
+            [model_out, loss, grad_update], feed_dict={x: batch_x[:, 0],
+                                                       x_v: batch_x[:, 1],
+                                                       x_h: batch_x[:, 2],
+                                                       x_vh: batch_x[:, 3],
+                                                       y: batch_y})
 
         # print('model preds: {}'.format(model_preds.shape))
         print('total_loss_value: {}'.format(tot_loss_value))
 
-        import matplotlib.pyplot as plt
-        output_image = model_preds[0, :, :, 0]
-        print(np.min(output_image), np.max(output_image))
-        plt.imshow(output_image, vmin=0, vmax=1)
-        plt.show()
+        # import matplotlib.pyplot as plt
+        # output_image = model_preds[0, :, :, 0]
+        # print(np.min(output_image), np.max(output_image))
+        # plt.imshow(output_image, vmin=0, vmax=1)
+        # plt.show()
 
         """
         ____________
@@ -136,8 +189,10 @@ def train():
 
 def main():
     # args = get_script_arguments()
-    logging.basicConfig(format='%(asctime)12s - %(levelname)s - %(message)s', level=logging.INFO)
+    logging.basicConfig(format='%(asctime)12s - %(levelname)s - %(message)s',
+                        level=logging.INFO)
     train()
+
 
 if __name__ == '__main__':
     main()
