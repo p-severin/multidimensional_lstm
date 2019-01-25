@@ -1,6 +1,7 @@
 import tensorflow as tf
 
 # Network Parameters
+from tensorflow.contrib import rnn
 from tensorflow.contrib.grid_rnn.python.ops import grid_rnn_cell
 
 n_depth = 5

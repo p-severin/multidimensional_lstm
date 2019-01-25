@@ -4,6 +4,7 @@ from datetime import time
 from enum import Enum
 import tensorflow as tf
 from tensorflow.contrib import slim
+from tensorflow.contrib.grid_rnn import Grid2LSTMCell
 import numpy as np
 
 from md_lstm.images import create_dataset
@@ -72,6 +73,8 @@ def train():
 
     logger.info('Using Multi Dimensional LSTM.')
 
+    rnn_out = Grid2LSTMCell()
+
     rnn_out, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
                                                   input_data=x, sh=[3, 3],
                                                   scope_n='layer_1')
@@ -88,40 +91,40 @@ def train():
     model_out = slim.fully_connected(
         inputs=tf.concat([rnn_out, rnn_out_v, rnn_out_h, rnn_out_vh], axis=3),
         num_outputs=how_many_classes,
-        activation_fn=tf.nn.tanh)
-
-    model_out_v = tf.image.flip_left_right(model_out)
-    model_out_h = tf.image.flip_up_down(model_out)
-    model_out_vh = tf.image.flip_up_down(model_out_v)
-
-    rnn_out_2, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
-                                                    input_data=model_out,
-                                                    sh=[1, 1],
-                                                    scope_n='layer_2_1')
-
-    rnn_out_2_v, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
-                                                      input_data=model_out_v,
-                                                      sh=[1, 1],
-                                                      scope_n='layer_2_2')
-
-    rnn_out_2_h, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
-                                                      input_data=model_out_h,
-                                                      sh=[1, 1],
-                                                      scope_n='layer_2_3')
-
-    rnn_out_2_vh, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
-                                                       input_data=model_out_vh,
-                                                       sh=[1, 1],
-                                                       scope_n='layer_2_4')
-
-    model_output = slim.fully_connected(
-        inputs=tf.concat([rnn_out_2, rnn_out_2_v, rnn_out_2_h, rnn_out_2_vh],
-                         axis=3),
-        num_outputs=how_many_classes,
         activation_fn=tf.nn.softmax)
 
+    # model_out_v = tf.image.flip_left_right(model_out)
+    # model_out_h = tf.image.flip_up_down(model_out)
+    # model_out_vh = tf.image.flip_up_down(model_out_v)
+    #
+    # rnn_out_2, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+    #                                                 input_data=model_out,
+    #                                                 sh=[1, 1],
+    #                                                 scope_n='layer_2_1')
+    #
+    # rnn_out_2_v, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+    #                                                   input_data=model_out_v,
+    #                                                   sh=[1, 1],
+    #                                                   scope_n='layer_2_2')
+    #
+    # rnn_out_2_h, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+    #                                                   input_data=model_out_h,
+    #                                                   sh=[1, 1],
+    #                                                   scope_n='layer_2_3')
+    #
+    # rnn_out_2_vh, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+    #                                                    input_data=model_out_vh,
+    #                                                    sh=[1, 1],
+    #                                                    scope_n='layer_2_4')
+    #
+    # model_output = slim.fully_connected(
+    #     inputs=tf.concat([rnn_out_2, rnn_out_2_v, rnn_out_2_h, rnn_out_2_vh],
+    #                      axis=3),
+    #     num_outputs=how_many_classes,
+    #     activation_fn=tf.nn.softmax)
+
     loss = tf.reduce_mean(
-        tf.losses.softmax_cross_entropy(onehot_labels=y, logits=model_output))
+        tf.losses.softmax_cross_entropy(onehot_labels=y, logits=model_out))
     grad_update = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
     sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))

@@ -1,17 +1,35 @@
-from keras import Sequential, Input
-from keras.layers import Bidirectional, LSTM
+from keras import Sequential, Input, Model
+from keras.layers import Bidirectional, LSTM, TimeDistributed, Permute, Reshape, Dense
+from keras.optimizers import Adam
 
-batch_size = 1
-rows = 270
-cols = 270
+from md_lstm.images import create_dataset
+
+batch_size = 16
+rows = 128
+cols = 128
 channels = 3
+classes = 21
 
 def build_model():
-    input_rows = Input(shape=(rows, channels))
-    input_cols = Input(shape=(cols, channels))
     model = Sequential()
-    model.add(Bidirectional(LSTM(30, return_sequences=True), input_shape=(rows, channels)))
+    model.add(Permute((1, 2, 3), input_shape=(rows, cols, channels)))
+    model.add(Reshape((rows * cols, channels)))
+    model.add(Bidirectional(LSTM(30, return_sequences=True)))
+    model.add(Reshape((rows, cols, 2 * 30)))
+    model.add(Permute((2, 1, 3)))
+    model.add(Reshape((rows * cols, 2 * 30)))
+    model.add(Bidirectional(LSTM(30, return_sequences=True)))
+    model.add(Dense(classes, activation='softmax'))
+    model.add(Reshape((rows, cols, classes)))
     model.summary()
+    return model
 
 if __name__ == '__main__':
-    build_model()
+
+    model = build_model()
+    optimizer = Adam(lr=10e-4)
+    model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+
+    X, y = create_dataset()
+    print('dataset created')
+    model.fit(x=X, y=y, batch_size=batch_size, epochs=5, verbose=1)

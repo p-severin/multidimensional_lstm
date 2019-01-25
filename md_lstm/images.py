@@ -1,19 +1,15 @@
 import os
 from functools import partial
 
-from skimage.transform import resize, rescale
-from sklearn.externals._pilutil import imresize
-from sklearn.feature_extraction import image
-from skimage.util import view_as_windows
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from PIL import Image
-from sklearn.preprocessing import OneHotEncoder, LabelEncoder, MinMaxScaler
+from skimage.util import view_as_windows
+from sklearn.externals._pilutil import imresize
 from tensorflow.python.keras.utils import to_categorical
 
-directory_voc_dataset = '/Users/patrykseweryn/PycharmProjects/datasets/voc_dataset/VOCtrainval_11-May-2012/VOCdevkit/VOC2012'
+directory_voc_dataset = '/home/pseweryn/Projects/repositories/VOCdevkit/VOC2012'
 
 
 class Dataset:
@@ -21,7 +17,7 @@ class Dataset:
                       segmentation='.png',
                       annotations='.txt')
 
-    def __init__(self, directory_images, subsets, image_shape=(270, 270)):
+    def __init__(self, directory_images, subsets, image_shape=(128, 128)):
         self.main_directory = partial(os.path.join, directory_images)
         self.directories = dict(image=self.main_directory('JPEGImages'),
                                 segmentation=self.main_directory(
@@ -32,7 +28,7 @@ class Dataset:
         self.rgb_images = dict(train=[],
                                val=[])
         self.image_shape = image_shape
-        self.segmentation_shape = (self.image_shape[0] //3, self.image_shape[1] // 3)
+        self.segmentation_shape = (self.image_shape[0], self.image_shape[1])
         self.data = dict()
 
         for subset in self.subsets:
@@ -48,19 +44,22 @@ class Dataset:
         csv_data = pd.read_csv(train_file, header=None)
         return csv_data.values.reshape((-1))
 
-    def image_generator(self, subset):
+    def image_generator(self, subset, how_many_images):
         images = []
         y = []
 
-        for file in self.data[subset][:16]:
+        for file in self.data[subset][:how_many_images]:
             image = self.open_image(file, 'image')
             segmentation = self.open_image(file, 'segmentation')
             segmentation[segmentation == 255] = 0
-            image = imresize(image, self.image_shape, interp='bilinear')
-            image_v = np.flip(image, axis=0)
-            image_h = np.flip(image, axis=1)
-            image_vh = np.flip(image_v, axis=1)
-            segmentation = imresize(segmentation, size=self.segmentation_shape,
+            image = imresize(image,
+                             self.image_shape,
+                             interp='bilinear')
+            # image_v = np.flip(image, axis=0)
+            # image_h = np.flip(image, axis=1)
+            # image_vh = np.flip(image_v, axis=1)
+            segmentation = imresize(segmentation,
+                                    size=self.segmentation_shape,
                                     interp='nearest')
             # plt.subplot(221)
             # plt.imshow(image)
@@ -71,10 +70,9 @@ class Dataset:
             # plt.subplot(224)
             # plt.imshow(image_vh)
             # plt.show()
-
             # plt.imshow(segmentation, vmin=0, vmax=20)
             # plt.show()
-            images.append((image, image_v, image_h, image_vh))
+            images.append(image)
             y.append(segmentation)
         return images, y
 
@@ -108,28 +106,29 @@ def extract_patches(pair_of_images):
                                       (-1, *segmentation_shape))
     return patches_rgb, patches_segmentation
 
+
 def __one_hot_encode_y(y_dataset):
-    one_hot_encoded = to_categorical(y_dataset)
+    one_hot_encoded = to_categorical(y_dataset, num_classes=21)
     y_dataset = one_hot_encoded
     return y_dataset
+
 
 def create_dataset():
     dataset = Dataset(directory_voc_dataset, subsets=['train', 'val'])
     X, y = dataset.image_generator('train')
     print('unique: {}'.format(np.unique(y)))
 
-
     X = np.array(X, dtype=np.float32)
-    # print(np.min(X), np.max(X))
     x_min = np.min(X)
     x_max = np.max(X)
     X = (X - x_min) / (x_max - x_min)
     print(np.min(X), np.max(X))
 
     y = __one_hot_encode_y(y)
-    y = np.array(y, dtype=np.int32)
+    y = np.array(y, dtype=np.uint8)
     print(y.shape)
     return X, y
+
 
 if __name__ == '__main__':
     create_dataset()
