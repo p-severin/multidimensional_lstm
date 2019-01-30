@@ -9,7 +9,7 @@ from skimage.util import view_as_windows
 from sklearn.externals._pilutil import imresize
 from tensorflow.python.keras.utils import to_categorical
 
-directory_voc_dataset = '/home/pseweryn/Projects/repositories/VOCdevkit/VOC2012'
+directory_voc_dataset = '/home/pseweryn/Repositories/VOCdevkit/VOC2012'
 
 
 class Dataset:
@@ -17,7 +17,7 @@ class Dataset:
                       segmentation='.png',
                       annotations='.txt')
 
-    def __init__(self, directory_images, subsets, image_shape=(128, 128)):
+    def __init__(self, directory_images, subsets, image_shape=(96, 96)):
         self.main_directory = partial(os.path.join, directory_images)
         self.directories = dict(image=self.main_directory('JPEGImages'),
                                 segmentation=self.main_directory(
@@ -28,7 +28,7 @@ class Dataset:
         self.rgb_images = dict(train=[],
                                val=[])
         self.image_shape = image_shape
-        self.segmentation_shape = (self.image_shape[0], self.image_shape[1])
+        self.segmentation_shape = (self.image_shape[0] // 3, self.image_shape[1] // 3)
         self.data = dict()
 
         for subset in self.subsets:
@@ -47,17 +47,21 @@ class Dataset:
     def image_generator(self, subset, how_many_images):
         images = []
         y = []
+        if how_many_images == -1:
+            number_of_elements = len(self.data[subset])
+        else:
+            number_of_elements = how_many_images
 
-        for file in self.data[subset][:how_many_images]:
+        for file in self.data[subset][:number_of_elements]:
             image = self.open_image(file, 'image')
             segmentation = self.open_image(file, 'segmentation')
             segmentation[segmentation == 255] = 0
             image = imresize(image,
                              self.image_shape,
                              interp='bilinear')
-            # image_v = np.flip(image, axis=0)
-            # image_h = np.flip(image, axis=1)
-            # image_vh = np.flip(image_v, axis=1)
+            image_v = np.flip(image, axis=0)
+            image_h = np.flip(image, axis=1)
+            image_vh = np.flip(image_v, axis=1)
             segmentation = imresize(segmentation,
                                     size=self.segmentation_shape,
                                     interp='nearest')
@@ -72,7 +76,8 @@ class Dataset:
             # plt.show()
             # plt.imshow(segmentation, vmin=0, vmax=20)
             # plt.show()
-            images.append(image)
+            # images.append(image)
+            images.append((image, image_v, image_h, image_vh))
             y.append(segmentation)
         return images, y
 
@@ -115,7 +120,7 @@ def __one_hot_encode_y(y_dataset):
 
 def create_dataset():
     dataset = Dataset(directory_voc_dataset, subsets=['train', 'val'])
-    X, y = dataset.image_generator('train')
+    X, y = dataset.image_generator('train', how_many_images=-1)
     print('unique: {}'.format(np.unique(y)))
 
     X = np.array(X, dtype=np.float32)
@@ -124,7 +129,7 @@ def create_dataset():
     X = (X - x_min) / (x_max - x_min)
     print(np.min(X), np.max(X))
 
-    y = __one_hot_encode_y(y)
+    # y = __one_hot_encode_y(y)
     y = np.array(y, dtype=np.uint8)
     print(y.shape)
     return X, y

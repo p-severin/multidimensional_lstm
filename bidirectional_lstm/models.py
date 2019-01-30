@@ -1,8 +1,8 @@
-from keras import Sequential, Input, Model
-from keras.layers import Bidirectional, LSTM, TimeDistributed, Permute, Reshape, Dense
+from keras import Sequential
+from keras.layers import Bidirectional, LSTM, Permute, Reshape, Dense
 from keras.optimizers import Adam
 
-from md_lstm.images import create_dataset
+from utils.images import create_dataset
 
 batch_size = 16
 rows = 128
