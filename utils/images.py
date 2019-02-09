@@ -9,7 +9,7 @@ from skimage.util import view_as_windows
 from sklearn.externals._pilutil import imresize
 from tensorflow.python.keras.utils import to_categorical
 
-directory_voc_dataset = '/home/pseweryn/Repositories/VOCdevkit/VOC2012'
+directory_voc_dataset = '/Users/patrykseweryn/PycharmProjects/datasets/voc_dataset/VOCtrainval_11-May-2012/VOCdevkit/VOC2012'
 
 
 class Dataset:
@@ -59,6 +59,7 @@ class Dataset:
             image = imresize(image,
                              self.image_shape,
                              interp='bilinear')
+
             image_v = np.flip(image, axis=0)
             image_h = np.flip(image, axis=1)
             image_vh = np.flip(image_v, axis=1)
@@ -81,6 +82,39 @@ class Dataset:
             y.append(segmentation)
         return images, y
 
+    def create_patches(self, subset, how_many_images):
+        images = []
+        y = []
+        if how_many_images == -1:
+            number_of_elements = len(self.data[subset])
+        else:
+            number_of_elements = how_many_images
+
+        for file in self.data[subset][:number_of_elements]:
+            image = self.open_image(file, 'image')
+            segmentation = self.open_image(file, 'segmentation')
+            segmentation[segmentation == 255] = 0
+            image = imresize(image,
+                             self.image_shape,
+                             interp='bilinear')
+            segmentation = imresize(segmentation,
+                                    size=self.segmentation_shape,
+                                    interp='nearest')
+            patches_rgb, patches_segmentation = self.extract_patches((image, segmentation))
+            patches_segmentation = self.__one_hot_encode_y(patches_segmentation)
+            image_v = np.flip(patches_rgb, axis=0)
+            image_h = np.flip(patches_rgb, axis=1)
+            image_vh = np.flip(patches_rgb, axis=1)
+            images.append((patches_rgb, image_v, image_h, image_vh))
+            y.append(patches_segmentation)
+        return np.array(images), np.array(y)
+
+    @staticmethod
+    def __one_hot_encode_y(y_dataset):
+        one_hot_encoded = to_categorical(y_dataset, num_classes=21)
+        y_dataset = one_hot_encoded
+        return y_dataset
+
     def open_image(self, file_name, image_type):
         image_path = os.path.join(self.directories[image_type],
                                   file_name + self.extensions[image_type])
@@ -96,44 +130,45 @@ class Dataset:
         plt.show()
 
 
-def extract_patches(pair_of_images):
-    rgb_image = pair_of_images[0]
-    segmentation = pair_of_images[1]
-    patch_shape = (3, 3, 3)
-    segmentation_shape = (1, 1)
-    step = 3
-    segmentation_step = 1
-    patches_rgb = view_as_windows(rgb_image, patch_shape, step=step)
-    patches_rgb = np.reshape(patches_rgb, (-1, *patch_shape))
-    patches_segmentation = view_as_windows(segmentation, segmentation_shape,
-                                           step=segmentation_step)
-    patches_segmentation = np.reshape(patches_segmentation,
-                                      (-1, *segmentation_shape))
-    return patches_rgb, patches_segmentation
+    def extract_patches(self, pair_of_images):
+        rgb_image = pair_of_images[0]
+        segmentation = pair_of_images[1]
+        patch_shape = (3, 3, 3)
+        segmentation_shape = (1, 1)
+        step = 3
+        segmentation_step = 1
+        patches_rgb = view_as_windows(rgb_image, patch_shape, step=step)
+        patches_rgb = np.reshape(patches_rgb, (patches_rgb.shape[0], patches_rgb.shape[1], np.prod(patch_shape)))
+        patches_segmentation = view_as_windows(segmentation, segmentation_shape,
+                                               step=segmentation_step)
+        patches_segmentation = np.reshape(patches_segmentation,
+                                          (patches_segmentation.shape[0], patches_segmentation.shape[1], np.prod(segmentation_shape)))
+        return patches_rgb, patches_segmentation
 
 
-def __one_hot_encode_y(y_dataset):
-    one_hot_encoded = to_categorical(y_dataset, num_classes=21)
-    y_dataset = one_hot_encoded
-    return y_dataset
+
 
 
 def create_dataset():
     dataset = Dataset(directory_voc_dataset, subsets=['train', 'val'])
-    X, y = dataset.image_generator('train', how_many_images=-1)
+    X, y = dataset.image_generator('train', how_many_images=100)
     print('unique: {}'.format(np.unique(y)))
 
     X = np.array(X, dtype=np.float32)
     x_min = np.min(X)
     x_max = np.max(X)
     X = (X - x_min) / (x_max - x_min)
+    print(X.shape)
     print(np.min(X), np.max(X))
 
-    # y = __one_hot_encode_y(y)
+    y = Dataset.__one_hot_encode_y(y)
     y = np.array(y, dtype=np.uint8)
     print(y.shape)
     return X, y
 
 
 if __name__ == '__main__':
-    create_dataset()
+    dataset = Dataset(directory_voc_dataset, subsets=['train', 'val'])
+    X, y = dataset.create_patches('train', how_many_images=100)
+    print(X.shape)
+    print(y.shape)

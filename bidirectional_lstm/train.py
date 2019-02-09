@@ -7,7 +7,7 @@ from bidirectional_lstm.models import build_model
 from bidirectional_lstm.data_generator import DataGenerator
 
 if __name__ == '__main__':
-    directory_voc_dataset = '/home/pseweryn/Projects/repositories/VOCdevkit/VOC2012'
+    directory_voc_dataset = '/Users/patrykseweryn/PycharmProjects/datasets/voc_dataset/VOCtrainval_11-May-2012/VOCdevkit/VOC2012'
 
     training_generator = DataGenerator(directory_voc_dataset, 'train', batch_size=8, shuffle=True)
     validation_generator = DataGenerator(directory_voc_dataset, 'val', batch_size=8, shuffle=False)

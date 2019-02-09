@@ -70,7 +70,7 @@ def train():
     x_h = tf.placeholder(tf.float32, [batch_size, h, w, channels])
     x_vh = tf.placeholder(tf.float32, [batch_size, h, w, channels])
 
-    y = tf.placeholder(tf.int32, [batch_size, h // 3, w // 3])
+    y = tf.placeholder(tf.int32, [batch_size, h // 3, w // 3, how_many_classes])
 
     logger.info('Using Multi Dimensional LSTM.')
 
@@ -123,7 +123,7 @@ def train():
     #     num_outputs=how_many_classes,
     #     activation_fn=tf.nn.softmax)
 
-    loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=model_out))
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=model_out))
     grad_update = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
     sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))
@@ -153,11 +153,20 @@ def train():
 
             # print('model preds: {}'.format(model_preds.shape))
             print('total_loss_value: {}'.format(tot_loss_value))
+            print(model_preds.shape)
 
-            output_image = np.argmax(model_preds[0], axis=2)
-            print(np.min(output_image), np.max(output_image))
-            if i % 10 == 0:
-                plt.imshow(output_image, vmin=0, vmax=20)
+            # output_image = np.argmax(model_preds[0], axis=2)
+            # print(np.min(output_image), np.max(output_image))
+            if i % 5 == 0:
+                plt.subplot(131)
+                plt.imshow(model_preds[0, :, :, 0], vmin=0, vmax=1)
+                plt.subplot(132)
+                plt.imshow(model_preds[0, :, :, 1], vmin=0, vmax=1)
+                plt.subplot(133)
+                plt.imshow(model_preds[0, :, :, 2], vmin=0, vmax=1)
+                # plt.imshow(model_preds[3], vmin=0, vmax=1)
+                # plt.imshow(model_preds[4], vmin=0, vmax=1)
+                # plt.imshow(model_preds[5], vmin=0, vmax=1)
                 plt.show()
 
             """
