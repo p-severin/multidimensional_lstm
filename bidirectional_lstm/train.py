@@ -7,10 +7,10 @@ from bidirectional_lstm.models import build_model
 from bidirectional_lstm.data_generator import DataGenerator
 
 if __name__ == '__main__':
-    directory_voc_dataset = '/Users/patrykseweryn/PycharmProjects/datasets/voc_dataset/VOCtrainval_11-May-2012/VOCdevkit/VOC2012'
+    directory_voc_dataset = '/home/pseweryn/Repositories/VOCdevkit/VOC2012'
 
-    training_generator = DataGenerator(directory_voc_dataset, 'train', batch_size=8, shuffle=True)
-    validation_generator = DataGenerator(directory_voc_dataset, 'val', batch_size=8, shuffle=False)
+    training_generator = DataGenerator(directory_voc_dataset, 'train', batch_size=4, shuffle=True, n_channels=27)
+    validation_generator = DataGenerator(directory_voc_dataset, 'val', batch_size=4, shuffle=False, n_channels=27)
 
     model = build_model()
     optimizer = Adam(lr=10e-4)

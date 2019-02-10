@@ -9,7 +9,12 @@ from skimage.util import view_as_windows
 from sklearn.externals._pilutil import imresize
 from tensorflow.python.keras.utils import to_categorical
 
-directory_voc_dataset = '/Users/patrykseweryn/PycharmProjects/datasets/voc_dataset/VOCtrainval_11-May-2012/VOCdevkit/VOC2012'
+from sys import platform
+
+if platform == 'linux':
+    directory_voc_dataset = '/home/pseweryn/Repositories/VOCdevkit/VOC2012'
+else:
+    directory_voc_dataset = '/Users/patrykseweryn/PycharmProjects/datasets/voc_dataset/VOCtrainval_11-May-2012/VOCdevkit/VOC2012'
 
 
 class Dataset:
@@ -107,7 +112,10 @@ class Dataset:
             image_vh = np.flip(patches_rgb, axis=1)
             images.append((patches_rgb, image_v, image_h, image_vh))
             y.append(patches_segmentation)
-        return np.array(images), np.array(y)
+        images = np.array(images, dtype=np.float32)
+        y = np.array(y)
+        images *= 1./255
+        return images, y
 
     @staticmethod
     def __one_hot_encode_y(y_dataset):
