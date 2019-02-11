@@ -1,4 +1,5 @@
 import os
+import sklearn
 from functools import partial
 
 import matplotlib.pyplot as plt
@@ -64,6 +65,7 @@ class Dataset:
             image = imresize(image,
                              self.image_shape,
                              interp='bilinear')
+            image = np.multiply(image, 1./255)
 
             image_v = np.flip(image, axis=0)
             image_h = np.flip(image, axis=1)
@@ -83,7 +85,7 @@ class Dataset:
             # plt.imshow(segmentation, vmin=0, vmax=20)
             # plt.show()
             # images.append(image)
-            images.append((image, image_v, image_h, image_vh))
+            images.append([image, image_v, image_h, image_vh])
             y.append(segmentation)
         return images, y
 
@@ -105,6 +107,7 @@ class Dataset:
             segmentation = imresize(segmentation,
                                     size=self.segmentation_shape,
                                     interp='nearest')
+
             patches_rgb, patches_segmentation = self.extract_patches((image, segmentation))
             patches_segmentation = self.__one_hot_encode_y(patches_segmentation)
             image_v = np.flip(patches_rgb, axis=0)
@@ -169,14 +172,18 @@ def create_dataset():
     print(X.shape)
     print(np.min(X), np.max(X))
 
-    y = Dataset.__one_hot_encode_y(y)
-    y = np.array(y, dtype=np.uint8)
-    print(y.shape)
+    # y = Dataset.__one_hot_encode_y(y)
+    # y = np.array(y, dtype=np.uint8)
+    # print(y.shape)
     return X, y
 
 
 if __name__ == '__main__':
-    dataset = Dataset(directory_voc_dataset, subsets=['train', 'val'])
-    X, y = dataset.create_patches('train', how_many_images=100)
-    print(X.shape)
-    print(y.shape)
+    # dataset = Dataset(directory_voc_dataset, subsets=['train', 'val'], image_shape=(90, 90))
+    # X, y = dataset.create_patches('train', how_many_images=10)
+    # print(X.shape)
+    # print(y.shape)
+    X, y_train = create_dataset()
+    weights = sklearn.utils.class_weight.compute_class_weight(class_weight='balanced',
+                                                              classes=np.unique(y_train), y=y_train)
+    print(weights)

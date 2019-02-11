@@ -74,11 +74,11 @@ class DataGenerator(keras.utils.Sequence):
             segmentation[segmentation == 255] = 0
 
             patches_rgb, patches_segmentation = self.extract_patches((temp_image, segmentation))
-            patches_rgb * 1./255
+            patches_rgb = np.multiply(patches_rgb, 1./255)
             patches_segmentation = self.__one_hot_encode_y(patches_segmentation)
             image_v = np.flip(patches_rgb, axis=0)
             image_h = np.flip(patches_rgb, axis=1)
-            image_vh = np.flip(patches_rgb, axis=1)
+            image_vh = np.flip(image_v, axis=1)
             X[i, ] = patches_rgb
             X_v[i, ] = image_v
             X_h[i, ] = image_h
@@ -90,7 +90,7 @@ class DataGenerator(keras.utils.Sequence):
     def open_image(self, file_name, image_type):
         image_path = os.path.join(self.directories[image_type], file_name + self.extensions[image_type])
         image = Image.open(image_path)
-        image = np.array(image)
+        image = np.array(image, dtype=np.float32)
         return image
 
     def get_image_numbers(self, subset):
