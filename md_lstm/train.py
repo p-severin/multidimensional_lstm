@@ -1,14 +1,21 @@
 import argparse
 import logging
 from datetime import time
+import numpy as np
 from enum import Enum
+from sys import platform
 
+import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.contrib import slim
-import matplotlib.pyplot as plt
-import numpy as np
+
+from utils.images import Dataset
+
+plt.rcParams.update({'font.size': 6})
+# plt.rcParams['figure.figsize'] = 5, 10
+
+from classes_pascal import pascal_ids
 from md_lstm.md_lstm_implementation import multi_dimensional_rnn_while_loop
-from utils.images import create_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -52,18 +59,24 @@ def get_arguments(parser: argparse.ArgumentParser):
 
 def train():
     learning_rate = 10e-4
-    batch_size = 8
+    batch_size = 2
     epochs = 5
     h = 96
     w = 96
     channels = 3
-    hidden_size = 16
-    how_many_classes = 21
+    hidden_size = 40
+    how_many_classes = 2
     eps = 10e-4
 
-    data_X, data_y = create_dataset()
-    print(data_X.shape)
-    print(data_y.shape)
+    if platform == 'linux':
+        directory_voc_dataset = '/home/pseweryn/Repositories/VOCdevkit/VOC2012'
+    else:
+        directory_voc_dataset = '/Users/patrykseweryn/PycharmProjects/datasets/voc_dataset/VOCtrainval_11-May-2012/VOCdevkit/VOC2012'
+
+    dataset = Dataset(directory_voc_dataset, 'train', [15], image_shape=(h, w))
+    data_X, data_y = dataset.generate_data()
+    print(len(data_X))
+    print(len(data_y))
 
     x = tf.placeholder(tf.float32, [batch_size, h, w, channels])
     x_v = tf.placeholder(tf.float32, [batch_size, h, w, channels])
@@ -73,7 +86,6 @@ def train():
     y = tf.placeholder(tf.int32, [batch_size, h // 3, w // 3, how_many_classes])
 
     logger.info('Using Multi Dimensional LSTM.')
-
 
     rnn_out, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
                                                   input_data=x, sh=[3, 3],
@@ -90,40 +102,40 @@ def train():
 
     model_out = slim.fully_connected(
         inputs=tf.concat([rnn_out, rnn_out_v, rnn_out_h, rnn_out_vh], axis=3),
+        num_outputs=hidden_size,
+        activation_fn=tf.nn.tanh)
+
+    model_out_v = tf.image.flip_left_right(model_out)
+    model_out_h = tf.image.flip_up_down(model_out)
+    model_out_vh = tf.image.flip_up_down(model_out_v)
+
+    rnn_out_2, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+                                                    input_data=model_out,
+                                                    sh=[1, 1],
+                                                    scope_n='layer_2_1')
+
+    rnn_out_2_v, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+                                                      input_data=model_out_v,
+                                                      sh=[1, 1],
+                                                      scope_n='layer_2_2')
+
+    rnn_out_2_h, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+                                                      input_data=model_out_h,
+                                                      sh=[1, 1],
+                                                      scope_n='layer_2_3')
+
+    rnn_out_2_vh, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
+                                                       input_data=model_out_vh,
+                                                       sh=[1, 1],
+                                                       scope_n='layer_2_4')
+
+    model_output = slim.fully_connected(
+        inputs=tf.concat([rnn_out_2, rnn_out_2_v, rnn_out_2_h, rnn_out_2_vh],
+                         axis=3),
         num_outputs=how_many_classes,
         activation_fn=tf.nn.softmax)
 
-    # model_out_v = tf.image.flip_left_right(model_out)
-    # model_out_h = tf.image.flip_up_down(model_out)
-    # model_out_vh = tf.image.flip_up_down(model_out_v)
-    #
-    # rnn_out_2, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
-    #                                                 input_data=model_out,
-    #                                                 sh=[1, 1],
-    #                                                 scope_n='layer_2_1')
-    #
-    # rnn_out_2_v, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
-    #                                                   input_data=model_out_v,
-    #                                                   sh=[1, 1],
-    #                                                   scope_n='layer_2_2')
-    #
-    # rnn_out_2_h, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
-    #                                                   input_data=model_out_h,
-    #                                                   sh=[1, 1],
-    #                                                   scope_n='layer_2_3')
-    #
-    # rnn_out_2_vh, _ = multi_dimensional_rnn_while_loop(rnn_size=hidden_size,
-    #                                                    input_data=model_out_vh,
-    #                                                    sh=[1, 1],
-    #                                                    scope_n='layer_2_4')
-    #
-    # model_output = slim.fully_connected(
-    #     inputs=tf.concat([rnn_out_2, rnn_out_2_v, rnn_out_2_h, rnn_out_2_vh],
-    #                      axis=3),
-    #     num_outputs=how_many_classes,
-    #     activation_fn=tf.nn.softmax)
-
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=model_out))
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=model_output))
     grad_update = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
     sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))
@@ -134,21 +146,24 @@ def train():
     #                  'overall_loss_{}'.format(model_type),
     #                  'time_{}'.format(model_type),
     #                  'relevant_loss_{}'.format(model_type)])
+
+    # names = [str(op.name) for op in tf.get_default_graph().get_operations()]
+
     for epoch in range(epochs):
-        for i in range(data_X.shape[0] // batch_size):
-            grad_step_start_time = time()
-            batch_x = data_X[i: i + batch_size]
+        steps = data_X.shape[0] // batch_size
+        print('number of steps: {}'.format(steps))
+        for i in range(steps):
+            batch_x = data_X[i * batch_size: (i + 1) * batch_size]
             batch_x += eps
-            print(batch_x.shape)
-            batch_y = data_y[i: i + batch_size]
+            print(np.min(batch_x), np.max(batch_x))
+            batch_y = data_y[i * batch_size: (i + 1) * batch_size]
 
             model_preds, tot_loss_value, _ = sess.run(
-                [model_out, loss, grad_update], feed_dict={x: batch_x[:, 0],
+                [model_output, loss, grad_update], feed_dict={x: batch_x[:, 0],
                                                            x_v: batch_x[:, 1],
                                                            x_h: batch_x[:, 2],
                                                            x_vh: batch_x[:, 3],
                                                            y: batch_y})
-
 
 
             # print('model preds: {}'.format(model_preds.shape))
@@ -157,17 +172,83 @@ def train():
 
             # output_image = np.argmax(model_preds[0], axis=2)
             # print(np.min(output_image), np.max(output_image))
-            if i % 5 == 0:
-                plt.subplot(131)
-                plt.imshow(model_preds[0, :, :, 0], vmin=0, vmax=1)
-                plt.subplot(132)
-                plt.imshow(model_preds[0, :, :, 1], vmin=0, vmax=1)
-                plt.subplot(133)
-                plt.imshow(model_preds[0, :, :, 2], vmin=0, vmax=1)
+            nrows = 5
+            ncols = 8
+
+            if i % 2 == 0:
+                # plt.subplot(131)
+                # plt.imshow(model_preds[0, :, :, 0], vmin=0, vmax=1)
+                # plt.subplot(132)
+                # plt.imshow(model_preds[0, :, :, 1], vmin=0, vmax=1)
+                # plt.subplot(133)
+                # plt.imshow(model_preds[0, :, :, 2], vmin=0, vmax=1)
+                plt.subplot(151)
+                plt.imshow(batch_x[0, 0, :, :, :])
+                plt.title('oryginał')
+                plt.axis('off')
+
+                plt.subplot(152)
+                plt.imshow(model_preds[0, :, :, 1], cmap='Greys', vmin=0, vmax=1)
+                plt.title('predykcja: człowiek')
+                plt.axis('off')
+
+                plt.subplot(153)
+                plt.imshow(batch_y[0, :, :, 1], cmap='Greys', vmin=0, vmax=1)
+                plt.title('segmentacja: człowiek')
+                plt.axis('off')
+
+                plt.subplot(154)
+                plt.imshow(model_preds[0, :, :, 0], cmap='Greys', vmin=0, vmax=1)
+                plt.title('predykcja: tło')
+                plt.axis('off')
+
+                plt.subplot(155)
+                plt.imshow(batch_y[0, :, :, 0], cmap='Greys', vmin=0, vmax=1)
+                plt.title('segmentacja: tło')
+                plt.axis('off')
+
+                plt.tight_layout()
+                plt.savefig(
+                    '/home/pseweryn/Projects/multidimensional_lstm/repository/results/md_lstm/two_step_md_lstm/image_{}_{}.jpg'.format(
+                        epoch, i), bbox_inches='tight', dpi=100)
+                plt.close()
+                # plt.show()
+
+                # plt.savefig(
+                #     '/home/pseweryn/Projects/multidimensional_lstm/repository/results/md_lstm/original/original_iteration_{}.jpg'.format(
+                #         i))
+
+                # fig, ax = plt.subplots(nrows, ncols)
+                # fig.set_size_inches((8, 2), forward=False)
+                # for row in range(nrows):
+                #     for col in range(ncols):
+                #         ax[row, col].imshow(batch_y[, :, :, col + row * ncols], vmin=0, vmax=1)
+                #         ax[row, col].set_title(pascal_ids[col + row * ncols])
+                #         ax[row, col].axis('off')
+                # fig.savefig(
+                #     '/home/pseweryn/Projects/multidimensional_lstm/repository/results/md_lstm/two_step_md_lstm/seg_true_iteration_{}.jpg'.format(
+                #         i))
+                # plt.show()
+                # plt.close(fig)
+
+                # fig, ax = plt.subplots(nrows, ncols)
+                # fig.set_size_inches((8, 2), forward=False)
+                # for row in range(nrows):
+                #     for col in range(ncols):
+                #         ax[row, col].imshow(model_preds[0, :, :, col + row * ncols], vmin=0, vmax=1)
+                #         ax[row, col].set_title(pascal_ids[col + row * ncols])
+                #         ax[row, col].axis('off')
+                # plt.savefig(
+                #     '/home/pseweryn/Projects/multidimensional_lstm/repository/results/md_lstm/segmentation_predicted/seg_predicted_iteration_{}.jpg'.format(
+                #         i))
+                # plt.show()
+                # plt.close(fig)
                 # plt.imshow(model_preds[3], vmin=0, vmax=1)
                 # plt.imshow(model_preds[4], vmin=0, vmax=1)
                 # plt.imshow(model_preds[5], vmin=0, vmax=1)
-                plt.show()
+                # plt.imshow(model_preds[0, :, :, 20])
+                # print(np.max(model_preds[0, :, :, 20]))
+                # plt.show()
 
             """
             ____________

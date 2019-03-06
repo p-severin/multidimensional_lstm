@@ -23,115 +23,127 @@ class Dataset:
                       segmentation='.png',
                       annotations='.txt')
 
-    def __init__(self, directory_images, subsets, image_shape=(96, 96)):
+    def __init__(self, directory_images: str, subset: str, chosen_classes: list, image_shape=(270, 270)):
         self.main_directory = partial(os.path.join, directory_images)
         self.directories = dict(image=self.main_directory('JPEGImages'),
                                 segmentation=self.main_directory(
                                     'SegmentationClass'),
                                 annotations=self.main_directory(
                                     'ImageSets/Segmentation'))
-        self.subsets = subsets
-        self.rgb_images = dict(train=[],
-                               val=[])
+        self.subset = subset
+        self.chosen_classes = chosen_classes
         self.image_shape = image_shape
         self.segmentation_shape = (self.image_shape[0] // 3, self.image_shape[1] // 3)
-        self.data = dict()
+        self.files = self.__get_image_numbers()
+        self.original_images = []
+        self.X = []
+        self.X_vertical = []
+        self.X_horizontal = []
+        self.X_both_transformations = []
+        self.y = []
 
-        for subset in self.subsets:
-            self.data[subset] = self.get_image_numbers(subset)
+    def __get_image_numbers(self):
 
-    def get_image_numbers(self, subset):
-
-        if subset not in ['train', 'trainval', 'val']:
+        if self.subset not in ['train', 'trainval', 'val']:
             raise Exception('No such data subset exists.')
 
         train_file = os.path.join(self.directories['annotations'],
-                                  subset + self.extensions['annotations'])
+                                  self.subset + self.extensions['annotations'])
         csv_data = pd.read_csv(train_file, header=None)
         return csv_data.values.reshape((-1))
 
-    def image_generator(self, subset, how_many_images):
-        images = []
-        y = []
-        if how_many_images == -1:
-            number_of_elements = len(self.data[subset])
-        else:
-            number_of_elements = how_many_images
-
-        for file in self.data[subset][:number_of_elements]:
-            image = self.open_image(file, 'image')
-            segmentation = self.open_image(file, 'segmentation')
-            segmentation[segmentation == 255] = 0
-            image = imresize(image,
-                             self.image_shape,
-                             interp='bilinear')
-            image = np.multiply(image, 1./255)
-
-            image_v = np.flip(image, axis=0)
-            image_h = np.flip(image, axis=1)
-            image_vh = np.flip(image_v, axis=1)
-            segmentation = imresize(segmentation,
-                                    size=self.segmentation_shape,
-                                    interp='nearest')
-            # plt.subplot(221)
-            # plt.imshow(image)
-            # plt.subplot(222)
-            # plt.imshow(image_v)
-            # plt.subplot(223)
-            # plt.imshow(image_h)
-            # plt.subplot(224)
-            # plt.imshow(image_vh)
-            # plt.show()
-            # plt.imshow(segmentation, vmin=0, vmax=20)
-            # plt.show()
-            # images.append(image)
-            images.append([image, image_v, image_h, image_vh])
-            y.append(segmentation)
-        return images, y
-
-    def create_patches(self, subset, how_many_images):
-        images = []
-        y = []
-        if how_many_images == -1:
-            number_of_elements = len(self.data[subset])
-        else:
-            number_of_elements = how_many_images
-
-        for file in self.data[subset][:number_of_elements]:
-            image = self.open_image(file, 'image')
-            segmentation = self.open_image(file, 'segmentation')
-            segmentation[segmentation == 255] = 0
-            image = imresize(image,
-                             self.image_shape,
-                             interp='bilinear')
-            segmentation = imresize(segmentation,
-                                    size=self.segmentation_shape,
-                                    interp='nearest')
-
-            patches_rgb, patches_segmentation = self.extract_patches((image, segmentation))
-            patches_segmentation = self.__one_hot_encode_y(patches_segmentation)
-            image_v = np.flip(patches_rgb, axis=0)
-            image_h = np.flip(patches_rgb, axis=1)
-            image_vh = np.flip(patches_rgb, axis=1)
-            images.append((patches_rgb, image_v, image_h, image_vh))
-            y.append(patches_segmentation)
-        images = np.array(images, dtype=np.float32)
-        y = np.array(y)
-        images *= 1./255
-        return images, y
-
-    @staticmethod
-    def __one_hot_encode_y(y_dataset):
-        one_hot_encoded = to_categorical(y_dataset, num_classes=21)
-        y_dataset = one_hot_encoded
-        return y_dataset
-
-    def open_image(self, file_name, image_type):
+    def __open_image(self, file_name, image_type):
         image_path = os.path.join(self.directories[image_type],
                                   file_name + self.extensions[image_type])
         image = Image.open(image_path)
         image = np.array(image)
         return image
+
+    def generate_images(self, how_many_images: int):
+        if how_many_images == -1:
+            number_of_elements = len(self.files)
+        else:
+            number_of_elements = how_many_images
+
+        for file in self.files[:number_of_elements]:
+            image = self.__open_image(file, 'image')
+            segmentation = self.__open_image(file, 'segmentation')
+            self.X.append(image)
+            self.y.append(segmentation)
+
+    def resize_images(self):
+        self.X = [imresize(image, self.image_shape, interp='bilinear') for image in self.X]
+        self.y = [imresize(image, self.segmentation_shape, interp='nearest') for image in self.y]
+
+    def remove_classes_not_used(self):
+        classes_to_be_removed = list(np.unique(self.y))
+        classes_to_be_removed = [x for x in classes_to_be_removed if x not in self.chosen_classes]
+        print(classes_to_be_removed)
+        for not_chosen in classes_to_be_removed:
+            self.y[self.y == not_chosen] = 0
+
+    def transform_data_to_numpy_arrays(self):
+        self.X = np.array(self.X)
+        self.X_vertical = np.array(self.X_vertical)
+        self.X_horizontal = np.array(self.X_horizontal)
+        self.X_both_transformations = np.array(self.X_both_transformations)
+        self.y = np.array(self.y)
+
+    def prepare_input_data_X(self):
+        self.X = np.multiply(self.X, 1. / 255)
+
+    def create_flipped_windows(self):
+        self.X_vertical = np.flip(self.X, axis=1)
+        self.X_horizontal = np.flip(self.X, axis=2)
+        self.X_both_transformations = np.flip(self.X_vertical, axis=2)
+
+    def divide_image_into_patches(self, image, patch_shape, step):
+        patches = view_as_windows(image, patch_shape, step=step)
+        patches = np.reshape(patches, (patches.shape[0], patches.shape[1], np.prod(patch_shape)))
+        return patches
+
+    def leave_images_of_one_class(self):
+        newX = []
+        newY = []
+        for image, segmentation in zip(self.X, self.y):
+            for chosen_class in self.chosen_classes:
+                if chosen_class in np.unique(segmentation):
+                    newX.append(image)
+                    newY.append(segmentation)
+        self.X = np.array(newX)
+        self.original_images = newX
+        self.y = np.array(newY)
+        for i, chosen in enumerate(self.chosen_classes):
+            self.y[self.y == chosen] = i + 1
+
+    def extract_patches_from_data(self):
+        rgb_shape = (3, 3, 3)
+        rgb_step = 3
+        segmentation_shape = (1, 1)
+        segmentation_step = 1
+
+        self.X = [self.divide_image_into_patches(image, rgb_shape, rgb_step) for image in self.X]
+        self.X_vertical = [self.divide_image_into_patches(image, rgb_shape, rgb_step) for image in self.X_vertical]
+        self.X_horizontal = [self.divide_image_into_patches(image, rgb_shape, rgb_step) for image in self.X_horizontal]
+        self.X_both_transformations = [self.divide_image_into_patches(image, rgb_shape, rgb_step) for image in
+                                       self.X_both_transformations]
+        self.y = [self.divide_image_into_patches(image, segmentation_shape, segmentation_step) for image in self.y]
+
+    def one_hot_encode_y(self):
+        self.y = to_categorical(self.y, num_classes=len(self.chosen_classes) + 1)
+
+    def generate_data(self, how_many_images):
+        self.generate_images(how_many_images=how_many_images)
+        self.resize_images()
+        self.transform_data_to_numpy_arrays()
+        self.remove_classes_not_used()
+        self.leave_images_of_one_class()
+        self.prepare_input_data_X()
+        self.create_flipped_windows()
+        self.extract_patches_from_data()
+        self.transform_data_to_numpy_arrays()
+        self.one_hot_encode_y()
+        return np.array([self.X, self.X_vertical, self.X_horizontal, self.X_both_transformations]), np.array(self.y)
 
     def plot_image_and_its_segmentation(self, image, segmentation_image):
         plt.subplot(121)
@@ -141,49 +153,27 @@ class Dataset:
         plt.show()
 
 
-    def extract_patches(self, pair_of_images):
-        rgb_image = pair_of_images[0]
-        segmentation = pair_of_images[1]
-        patch_shape = (3, 3, 3)
-        segmentation_shape = (1, 1)
-        step = 3
-        segmentation_step = 1
-        patches_rgb = view_as_windows(rgb_image, patch_shape, step=step)
-        patches_rgb = np.reshape(patches_rgb, (patches_rgb.shape[0], patches_rgb.shape[1], np.prod(patch_shape)))
-        patches_segmentation = view_as_windows(segmentation, segmentation_shape,
-                                               step=segmentation_step)
-        patches_segmentation = np.reshape(patches_segmentation,
-                                          (patches_segmentation.shape[0], patches_segmentation.shape[1], np.prod(segmentation_shape)))
-        return patches_rgb, patches_segmentation
-
-
-
-
-
-def create_dataset():
-    dataset = Dataset(directory_voc_dataset, subsets=['train', 'val'])
-    X, y = dataset.image_generator('train', how_many_images=100)
-    print('unique: {}'.format(np.unique(y)))
-
-    X = np.array(X, dtype=np.float32)
-    x_min = np.min(X)
-    x_max = np.max(X)
-    X = (X - x_min) / (x_max - x_min)
-    print(X.shape)
-    print(np.min(X), np.max(X))
-
-    # y = Dataset.__one_hot_encode_y(y)
-    # y = np.array(y, dtype=np.uint8)
-    # print(y.shape)
-    return X, y
-
-
 if __name__ == '__main__':
-    # dataset = Dataset(directory_voc_dataset, subsets=['train', 'val'], image_shape=(90, 90))
-    # X, y = dataset.create_patches('train', how_many_images=10)
-    # print(X.shape)
-    # print(y.shape)
-    X, y_train = create_dataset()
-    weights = sklearn.utils.class_weight.compute_class_weight(class_weight='balanced',
-                                                              classes=np.unique(y_train), y=y_train)
-    print(weights)
+    dataset = Dataset(directory_voc_dataset, 'train', [7])
+    # dataset.generate_images(-1)
+    # dataset.resize_images()
+    # dataset.transform_data_to_numpy_arrays()
+    # dataset.remove_classes_not_used()
+    # dataset.leave_images_of_one_class()
+    # dataset.prepare_input_data_X()
+    # dataset.create_flipped_windows()
+    # dataset.extract_patches_from_data()
+    # dataset.transform_data_to_numpy_arrays()
+    # dataset.one_hot_encode_y()
+
+    X, y = dataset.generate_data()
+
+    for image, segmentation in zip(X, y):
+        plt.subplot(121)
+        plt.imshow(image)
+        plt.subplot(122)
+        plt.imshow(segmentation[:, :, 1])
+        plt.show()
+
+    print(X.shape)
+    print(y.shape)

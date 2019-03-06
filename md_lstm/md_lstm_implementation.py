@@ -85,7 +85,7 @@ def multi_dimensional_rnn_while_loop(rnn_size, input_data, sh, dims=None, scope_
     returns [batch,h/sh[0],w/sh[1],rnn_size] the output of the lstm
     """
 
-    with tf.variable_scope("MultiDimensionalLSTMCell-" + scope_n):
+    with tf.variable_scope(scope_n):
 
         # Create multidimensional cell with selected size
         cell = MultiDimensionalLSTMCell(rnn_size)
